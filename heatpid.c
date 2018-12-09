@@ -53,7 +53,7 @@ void display(void){
 	}
 	P1_1=0;P1_2=1;
 	displayPort(LChr);
-	P1_2=0;p1_1=1;
+	P1_2=0;P1_1=1;
 	displayPort(RChr);
 }
 
