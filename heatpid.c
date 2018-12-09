@@ -24,10 +24,20 @@ void timer0(void) __interrupt 1    //000BH
 		}
 	}
 }
+void delay(void){
+	unsigned int i;
+	i=65535;
+	while(i--);
+}
 void displayPort(unsigned char LR){
-	if(LR=='L')P1_1=0;
-	if(LR=='R')
-	
+	P3_1=LR&1;delay();
+	P3_2=LR&2;delay();
+	P3_3=LR&3;delay();
+	P3_4=LR&4;delay();
+	P3_5=LR&5;delay();
+	P3_6=LR&6;delay();
+	P3_7=LR&7;delay();
+
 }
 void display(void){
 	if(STATE==STA_NORMAL){
@@ -41,6 +51,10 @@ void display(void){
 	if(sec4%2==0){
 		disIndex++;//500ms
 	}
+	P1_1=0;P1_2=1;
+	displayPort(LChr);
+	P1_2=0;p1_1=1;
+	displayPort(RChr);
 }
 
 void main(void){
