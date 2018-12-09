@@ -29,6 +29,7 @@ void delay(void){
 	i=65535;
 	while(i--);
 }
+/*
 void displayPort(unsigned char LR){
 	P3_1=LR&1;delay();
 	P3_2=LR&2;delay();
@@ -38,7 +39,7 @@ void displayPort(unsigned char LR){
 	P3_6=LR&6;delay();
 	P3_7=LR&7;delay();
 
-}
+}*/
 void display(void){
 	if(STATE==STA_NORMAL){
 		if(disIndex>=sizeof(STRING)){
@@ -52,9 +53,12 @@ void display(void){
 		disIndex++;//500ms
 	}
 	P1_1=0;P1_2=1;
-	displayPort(LChr);
+	P3=LChr;
+	delay();
+	//displayPort(LChr);
 	P1_2=0;P1_1=1;
-	displayPort(RChr);
+	P3=RChr;
+	//displayPort(RChr);
 }
 
 void main(void){
