@@ -2,6 +2,9 @@
 #define STA_NORMAL 0
 #define STA_SETBED 1
 #define STA_SETEXT 2
+#define BTN_MODE P1_1
+#define BTN_UP P1_2
+#define BTN_DOWN P1_3
 unsigned char bedTmp;
 unsigned char extTmp;
 unsigned char LChr;
@@ -9,6 +12,7 @@ unsigned char RChr;
 unsigned char ms4=0;
 unsigned char ms=0;
 unsigned char sec4=0;
+unsigned char btnTimer=0;
 unsigned char STATE=STA_NORMAL;
 unsigned char disIndex=0;
 unsigned char STRING[]="BED   SETBED   EXT   SETEXT   ";
@@ -55,10 +59,27 @@ void display(void){
 	P1_1=0;P1_2=1;
 	P3=LChr;
 	delay();
-	//displayPort(LChr);
 	P1_2=0;P1_1=1;
 	P3=RChr;
-	//displayPort(RChr);
+	delay();
+}
+void parseButton(void){
+	if(BTN_MODE&BTN_UP&BTN_DOWN){
+		btnTimer=0;
+		return;
+	}
+	btnTimer++;
+	if(btnTimer<100)return;
+	if(BTN_MODE==0){
+		//check verb
+
+	}
+	if(BTN_UP==0){
+			//checked
+	}
+	if(BTN_DOWN==0){
+			//checked
+	}
 }
 
 void main(void){
@@ -71,5 +92,6 @@ void main(void){
 	TR0=1;
 	while(1){
 		display();
+		parseButton();
 	}
 }
