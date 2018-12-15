@@ -7,12 +7,14 @@
 #define BTN_DOWN P1_3
 unsigned char bedTmp;
 unsigned char extTmp;
+unsigned char setBed;
+unsigned char setExt;
 unsigned char LChr;
 unsigned char RChr;
 unsigned char ms4=0;
 unsigned char ms=0;
 unsigned char sec4=0;
-unsigned char btnTimer=0;
+unsigned char btnPressed=0;
 unsigned char STATE=STA_NORMAL;
 unsigned char disIndex=0;
 unsigned char STRING[]="BED   SETBED   EXT   SETEXT   ";
@@ -64,22 +66,31 @@ void display(void){
 	delay();
 }
 void parseButton(void){
-	if(BTN_MODE&BTN_UP&BTN_DOWN){
-		btnTimer=0;
-		return;
-	}
-	btnTimer++;
-	if(btnTimer<100)return;
+    if(btnPressed){
+        btnPressed=BTN_MODE&BTN_UP&BTN_DOWN;
+        btnPressed=!btnPressed;
+    }
+    if(btnPressed)return;
+    
 	if(BTN_MODE==0){
-		//check verb
-
-	}
+        if(STATE==STA_NORMAL)STATE=STA_SETBED;
+        else if(STATE==STA_SETBED)STATE=STA_SETEXT;
+        else if(STATE==STA_SETEXT)STATE=STA_NORMAL;
+        btnPressed=1;
+    }
 	if(BTN_UP==0){
-			//checked
+        if(STATE==STA_NORMAL)return;
+        if(STATE==STA_SETBED)setBed++;
+        if(STATE==STA_SETEXT)setExt++;
+        btnPressed=1;
 	}
 	if(BTN_DOWN==0){
-			//checked
+        if(STATE==STA_NORMAL)return;
+        if(STATE==STA_SETBED)setBed--;
+        if(STATE==STA_SETEXT)setExt--;
+        btnPressed=1;
 	}
+    
 }
 
 void main(void){
