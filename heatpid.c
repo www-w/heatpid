@@ -5,6 +5,9 @@
 #define BTN_MODE P1_1
 #define BTN_UP P1_2
 #define BTN_DOWN P1_3
+#define BTN_MODE_PRESSED 1
+#define BTN_UP_PRESSED 2
+#define BTN_DOWN_PRESSED 4
 unsigned char bedTmp;
 unsigned char extTmp;
 unsigned char setBed;
@@ -63,33 +66,49 @@ void display(void){
 	displayPort(RChr);
 }
 void parseButton(void){
-	if(!BTN_MODE&!BTN_UP&!BTN_DOWN){
+	if(!(BTN_MODE&BTN_UP&BTN_DOWN)){
 		//some key down
+		if(btnDown < 1)btnDown=1;//start timer;
+		if(!BTN_MODE)btnPressed=BTN_MODE_PRESSED;
+		if(!BTN_UP)btnPressed=BTN_UP_PRESSED;
+		if(!BTN_DOWN)btnPressed=BTN_DOWN_PRESSED;
+		return;
+	}
+	/*
+	if(!BTN_MODE){
+		btnPressed=BTN_MODE_PRESSED;
+		if(btnDown < 1)btnDown=1;//start timer;
+		return;
+	}else if(!BTN_UP){
+		btnPressed=BTN_UP_PRESSED;
+		if(btnDown < 1)btnDown=1;//start timer;
+		return;
+	}else if(!BTN_DOWN){
+		btnPressed=BTN_DOWN_PRESSED;
 		if(btnDown < 1)btnDown=1;//start timer;
 		return;
 	}
+	*/
 	//key up or not pressed
 	if(btnDown==0)return;
 	//keyup
 	if(btnDown<50)return; //ignore verb
-    
-	if(BTN_MODE==0){
-        if(STATE==STA_NORMAL)STATE=STA_SETBED;
-        else if(STATE==STA_SETBED)STATE=STA_SETEXT;
-        else if(STATE==STA_SETEXT)STATE=STA_NORMAL;
-        btnPressed=1;
-    }
-	if(BTN_UP==0){
-        if(STATE==STA_NORMAL)return;
-        if(STATE==STA_SETBED)setBed++;
-        if(STATE==STA_SETEXT)setExt++;
-        btnPressed=1;
-	}
-	if(BTN_DOWN==0){
-        if(STATE==STA_NORMAL)return;
-        if(STATE==STA_SETBED)setBed--;
-        if(STATE==STA_SETEXT)setExt--;
-        btnPressed=1;
+	btnDown=0; //clear timer
+    switch(btnPressed){
+		case BTN_MODE_PRESSED:
+			if(STATE==STA_NORMAL)STATE=STA_SETBED;
+			else if(STATE==STA_SETBED)STATE=STA_SETEXT;
+			else if(STATE==STA_SETEXT)STATE=STA_NORMAL;
+			break;
+		case BTN_UP_PRESSED:
+			if(STATE==STA_NORMAL)return;
+			if(STATE==STA_SETBED)setBed++;
+			if(STATE==STA_SETEXT)setExt++;
+			break;
+		case BTN_DOWN_PRESSED:
+			if(STATE==STA_NORMAL)return;
+			if(STATE==STA_SETBED)setBed--;
+			if(STATE==STA_SETEXT)setExt--;
 	}
     
 }
