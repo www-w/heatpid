@@ -21,7 +21,7 @@ unsigned char btnPressed=0;
 unsigned char btnDown=0;
 unsigned char STATE=STA_NORMAL;
 unsigned char disIndex=0;
-unsigned char STRING[]="BED   SETBED   EXT   SETEXT   ";
+unsigned char STRING[]="B000 E000 ";
 void timer0(void) __interrupt 1    //000BH
 {
 	ms4++;
