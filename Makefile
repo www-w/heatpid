@@ -4,7 +4,7 @@ heatpid.bin:build/heatpid.ihx
 	makebin -p build/heatpid.ihx heatpid.bin
 
 
-build/heatpid.ihx:
+build/heatpid.ihx: heatpid.c
 	sdcc -o build/ heatpid.c
 
 clean:
