@@ -22,6 +22,20 @@ unsigned char btnDown=0;
 unsigned char STATE=STA_NORMAL;
 unsigned char disIndex=0;
 unsigned char STRING[]="B000 E000 ";
+uint8_t TRANSLATION[] = {	// [0-9be]对应的LED笔段控制码
+	0x30, //0
+	0x31, //1
+	0x32, //2
+	0x33, //3
+	0x34, //4
+	0x35, //5
+	0x36, //6
+	0x37, //7
+	0x38, //8
+	0x39, //9
+	0x40, //10 b
+	0x41 //11 e
+};
 void timer0(void) __interrupt 1    //000BH
 {
 	ms4++;
