@@ -1,2 +1,6 @@
 # heatpid
-3d printer heatbed and extruder PID with LED Display
+3D打印机的挤出器和热床温控，采用一片STC12C5202AD单片机实现。 
+显示部分使用4位数码管，温控部分根据ADC采样值使用增量式PID算法实现。 
+整体程序不超过2kb，片内EEPROM使用一个扇区存储ADC采样值与温度查表数据。 
+硬件部分单片机采用SOP20封装转DIP20插座，去掉VCC、GND、RST、XTAL1和XTAL2，共有15个IO口可用。 
+两路adc加两路软pwm输出，数码管4个COM加7个笔段，其中3个COM复用做3个按钮，正好用满15个IO口。

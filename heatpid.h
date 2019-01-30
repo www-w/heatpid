@@ -19,3 +19,6 @@
 #define BUTTON_MODE LED_COM_A
 #define BUTTON_UP LED_COM_B
 #define BUTTON_DOWN LED_COM_C
+
+#define PWM_EXT P1_7	// 挤出机温控PWM输出
+#define PWM_BED P1_6	// 热床温控PWM输出

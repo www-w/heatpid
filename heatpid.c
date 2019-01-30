@@ -18,6 +18,7 @@ unsigned char sec4=0;
 unsigned char btnPressed=0;
 unsigned char btnDown=0;
 unsigned char STATE=STA_NORMAL;
+uint8_t adc_state = 0;
 __code uint8_t TRANSLATION[] = {	// [0-9be]对应的LED笔段控制码
 	0x30, //0
 	0x31, //1
@@ -59,6 +60,20 @@ void timer0(void) __interrupt 1    //000BH
 		if(ms==250){
 			sec4++;
 			ms=0;
+			if(sec4 == 4) {
+				// every second
+				sec4 = 0;
+			//if(sec4 & 0x0f = 4){	//sec4 % 4 == 0){
+				/*
+				if(adc_state == 0){	// adc A already done
+					adc_state = 0xF0;	// next compute adc B channel
+				}else if(adc_state == 1){	// adc B done
+					adc_state = 0xF1;	// next compute adc A channel
+				}*/
+				if(adc_state < 0xF0){
+					adc_state += 0xF0;
+				}
+			}
 		}
 	}
 }
@@ -78,6 +93,8 @@ void displayPort(char LR){
 	if(data&0x04){ LED_E = 0; }
 	if(data&0x02){ LED_F = 0; }
 	if(data&0x01){ LED_G = 0; }
+	displayDelay();
+	LED_A = LED_B = LED_C = LED_D = LED_E = LED_F = LED_G = 1;
 }
 /** 传入值，按百位十位个位写入strptr指定位置，以待转码显示 **/
 void trans(uint8_t a){
@@ -120,7 +137,7 @@ void parseButton(void){
 			if(STATE==STA_NORMAL)STATE=STA_SETBED;
 			else if(STATE==STA_SETBED){
 				STATE=STA_SETEXT;
-				setBed = bedTmp;
+				setBed = bedTmp; // read tmp from eeprom
 			}
 			else if(STATE==STA_SETEXT){
 				STATE=STA_NORMAL;
@@ -144,7 +161,7 @@ void display(void){
 	parseButton();
 	if(STATE==STA_NORMAL){
 		display_enable = true;		// 默认状态始终允许显示
-		if(sec4 % 4 == 0) {			// 到达一秒钟
+		if(sec4 == 0){ //% 4 == 0) {			// 到达一秒钟
 			if(strptr == str_e){
 				strptr = str_b;
 				trans(bedTmp);
@@ -154,7 +171,7 @@ void display(void){
 			}
 		}
 
-	} else if(sec4 % 2 == 0) {		// 其它模式都需要闪烁显示
+	} else if(sec4 == 0 || sec4 == 2){ //% 2 == 0) {		// 其它模式都需要闪烁显示
 		// 500ms 显示 500ms 不显示
 		display_enable = !display_enable;
 		if(!display_enable)return;	// 不显示时直接返回,直到下一个500ms到来
@@ -169,23 +186,53 @@ void display(void){
 	}
 	LED_COM_A = 0;
 	displayPort(0);
-	displayDelay();
 	LED_COM_A = 1;
 	LED_COM_B = 0;
 	displayPort(1);
-	displayDelay();
 	LED_COM_B = 1;
 	LED_COM_C = 0;
 	displayPort(2);
-	displayDelay();
 	LED_COM_C = 1;
 	LED_COM_D = 0;
 	displayPort(3);
-	displayDelay();
 	LED_COM_D = 1;
 }
 
+void EEPROM_read(uint8_t addrh, uint8_t addrl){
+	IAP_CONTR = 0x83;	// enable iap
+	IAP_ADDRH = addrh;
+	IAP_ADDRL = addrl;
+	IAP_CMD = 1;	// 字节读
+	IAP_TRIG= 0x5A;
+	IAP_TRIG= 0xA5;
+}
+
+#define ADC2TMP(a) EEPROM_read(1,(a))	// adc值转温度值，返回IAP_DATA
+#define TMP2ADC(a) EEPROM_read(0,(a))	// 温度值转adc值，返回IAP_DATA
+
+// 增量式PID 部分 
+struct PID{
+	// PID主要数据结构体
+	int16_t Sv;	// 用户设定值 用户设定摄氏度，转储为对应adc值保存于此
+	int16_t Ek;	// 本次偏差值 偏差值均基于ADC返回值计算
+	int16_t Ek1;	// 前次偏差值
+	int16_t Ek2;	// 前前次偏差值
+
+	uint8_t pwm;	// 当前输出pwm值 [0,255]
+};
+void pidCompute(struct PID* pid){
+	int16_t t;
+	pid->Ek2 = pid->Ek1;
+	pid->Ek1 = pid->Ek;
+	pid->Ek = pid->Sv - ADC_RES;
+	t = pid->Ek - pid->Ek1 + pid->Ek + pid->Ek - pid->Ek1 - pid->Ek1 + pid->Ek2 + pid->pwm;
+	if(t > 255) t = 255;
+	if(t < 0) t = 0;
+	pid->pwm = t;
+}
 void main(void){
+	struct PID pidExt = {200,0,0,0,0};
+	struct PID pidBed = {100,0,0,0,0};
 	//Init Timer0
 	TMOD=2;//00000010 8bit autoreload
 	TH0=6;//4 cycle equ 1ms
@@ -195,9 +242,63 @@ void main(void){
 	TR0=1;
 
 	// Init ADC
+	ADC_CONTR = 0x80;	// 10000000;
+	P1ASF = 0x01;
+	P1M1 = 0x03;	// P1.0 & P1.1 ADC input
+	// A Channel P1.0
+	// B Channel P1.1
 
 	while(1){
 		display();
 		parseButton();
+
+		// ADC & PID
+		if(adc_state == 0xF1){
+			// compute A
+			P1ASF = 0x01;
+			ADC_CONTR = 0x88;
+			NOP();NOP();NOP();NOP();NOP();
+			while(ADC_CONTR == 0x88);
+			ADC_CONTR = 0x80;
+			// retrun value in ADC_RES 
+			ADC2TMP(ADC_RES);
+			// return value in IAR_DATA
+			extTmp = IAP_DATA;
+			// PID start works
+			// pv = ADC_RES 当前值
+			pidCompute(&pidExt);
+
+			adc_state = 0;	// A ok next B
+		}else if(adc_state == 0xF0){
+			// compute B
+			P1ASF = 0x02;
+			ADC_CONTR = 0x89;
+			NOP();NOP();NOP();NOP();NOP();
+			while(ADC_CONTR== 0x89);
+			ADC_CONTR = 0x81;
+			// retrun value in ADC_RES
+			ADC2TMP(ADC_RES);
+			bedTmp = IAP_DATA;
+			// PID
+			pidCompute(&pidBed);
+
+			adc_state = 1;	// B ok next A
+		}
+
+		// Soft PWM OUTPUT
+		uint8_t i;
+		for(i = 1; i != 0; i++){	// i = [1, 255]
+			if(pidExt.pwm >= i){
+				PWM_EXT = 0;	// Power On
+			}else{
+				PWM_EXT = 1;
+			}
+			if(pidBed.pwm >= i){
+				PWM_BED = 0;
+			}else{
+				PWM_EXT = 1;
+			}
+		}
+
 	}
 }
