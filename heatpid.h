@@ -3,6 +3,9 @@
 #include <stdbool.h>
 
 //#define DEBUG
+#ifdef DEBUG
+#define DEBUG_SIZE 9
+#endif
 
 // 定义笔段LED IO口
 #define LED_COM_A P1_3				//	aaaaaa

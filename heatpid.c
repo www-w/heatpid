@@ -1,7 +1,7 @@
 #include "heatpid.h"
-#define STA_NORMAL 0x80
-#define STA_SETBED 0x40
-#define STA_SETEXT 0x20
+#define STA_NORMAL 0x82
+#define STA_SETBED 0x4F
+#define STA_SETEXT 0x2F
 #define BTN_MODE P1_1
 #define BTN_UP P1_2
 #define BTN_DOWN P1_3
@@ -9,7 +9,8 @@
 #define BTN_UP_PRESSED 2
 #define BTN_DOWN_PRESSED 4
 #ifdef DEBUG
-uint8_t debug;
+uint8_t debug_head;
+uint8_t debug_buffer[DEBUG_SIZE];
 #endif
 unsigned char bedTmp;
 unsigned char extTmp;
@@ -65,21 +66,17 @@ void timer0(void) __interrupt 1    //000BH
 				// every second
 				sec4 = 0;
 
-				// STATE Timer
-				if(STATE & STA_NORMAL){
-					// Every 2 seconds Change Display
-					if((STATE & 0x0F) < 2) STATE ++;
-				}else{
-					// Setting Modes Time out
-					if((STATE & 0x0F) < 30) STATE ++;
-					else STATE = STA_NORMAL;
-				}
-
+				if((STATE & 0x0F) > 0) STATE --;
+				else STATE = STA_NORMAL;
 
 				// ADC Timer
 				if(adc_state < 0xF0){
 					adc_state += 0xF0;
 				}
+#ifdef DEBUG
+				debug_head ++;
+				if(debug_head==DEBUG_SIZE)debug_head=0;
+#endif
 			}
 		}
 	}
@@ -95,19 +92,36 @@ struct PID{
 
 	uint8_t pwm;	// 当前输出pwm值 [0,255]
 };
+struct PID pidExt = {200,0,0,0,0};
+struct PID pidBed = {100,0,0,0,0};
 void pidCompute(struct PID* pid){
 	int16_t t;
 	pid->Ek2 = pid->Ek1;
 	pid->Ek1 = pid->Ek;
-	pid->Ek = pid->Sv - ADC_RES;
+	t = ADC_RES;
+	pid->Ek = t - pid->Sv;
 	t = pid->Ek - pid->Ek1 + pid->Ek + pid->Ek - pid->Ek1 - pid->Ek1 + pid->Ek2 + pid->pwm;
+	/*
+	t = pid->Ek - pid->Ek1;
+	t *= 3;
+	t += pid->Ek2;
+	t += pid->pwm;
+	debug_buffer[0] = pidExt.Sv>>8;
+	debug_buffer[1] = pidExt.Sv;
+	debug_buffer[2] = pidExt.Ek>>8;
+	debug_buffer[3] = pidExt.Ek;
+	debug_buffer[4] = pidExt.Ek1>>8; 
+	debug_buffer[5] = pidExt.Ek1;
+	debug_buffer[6] = pidExt.Ek2>>8;
+	debug_buffer[7] = pidExt.Ek2;
+	debug_buffer[8] = pidExt.pwm;
+	debug_buffer[0] = pidExt.pwm;
+	debug_buffer[1] = pidBed.pwm;
+	*/
 	if(t > 255) t = 255;
 	if(t < 0) t = 0;
 	pid->pwm = t;
 }
-
-struct PID pidExt = {200,0,0,0,0};
-struct PID pidBed = {100,0,0,0,0};
 
 void EEPROM_read(uint8_t addrh, uint8_t addrl){
 	IAP_CONTR = 0x83;	// enable iap
@@ -125,11 +139,10 @@ void EEPROM_clear(uint8_t sec){
 	IAP_TRIG = 0x5A;
 	IAP_TRIG = 0xA5;
 }
-void EEPROM_write(uint8_t addrh, uint8_t addrl, uint8_t data){
+void EEPROM_write(uint8_t addrh, uint8_t addrl){
 	IAP_CONTR = 0x83;
 	IAP_ADDRH = addrh;
 	IAP_ADDRL = addrl;
-	IAP_DATA = data;
 	IAP_CMD = 2;	// Program
 	IAP_TRIG = 0x5A;
 	IAP_TRIG = 0xA5;
@@ -151,7 +164,7 @@ void EEPROM_restore(void) {	// Restore parameter from EEPROM
 
 void displayDelay(){
 	// 增加延时可以减小显示频率增加显示亮度
-	uint16_t i;
+	uint8_t i;
 	i=0xFF;
 	while(i--);
 }
@@ -206,34 +219,42 @@ void parseButton(void){
 	btnDown=0;	// 重置去抖变量
     switch(btnPressed){
 		case BTN_MODE_PRESSED:
-			if(STATE & STA_NORMAL)STATE=STA_SETBED;
-			else if(STATE & STA_SETBED){
-				STATE=STA_SETEXT;
-				setBed = bedTmp; // read tmp from eeprom
+			if(STATE & STA_NORMAL & 0xF0){
+				STATE=STA_SETBED;
+				EEPROM_restore();
 			}
-			else if(STATE & STA_SETEXT){
-				STATE=STA_NORMAL;
-				setExt = extTmp;
+			else if(STATE & STA_SETBED & 0xF0){
+				STATE=STA_SETEXT;
+			}
+			else if(STATE & STA_SETEXT & 0xF0){
+				STATE=STA_NORMAL & 0xF0;
 				/* 保存设定值 */
-				//TODO
+				EEPROM_clear(2);
+				IAP_DATA = setExt;
+				EEPROM_write(2,0);
+				IAP_DATA = setBed;
+				EEPROM_write(2,1);
+				EEPROM_restore(); // update pid sv
 			}
 			break;
 		case BTN_UP_PRESSED:
-			if(STATE==STA_NORMAL)return;
-			if(STATE==STA_SETBED)setBed++;
-			if(STATE==STA_SETEXT)setExt++;
+			if(STATE & STA_NORMAL & 0xF0)return;
+			else STATE |= 0x0F;
+			if(STATE & STA_SETBED & 0xF0)setBed++;
+			if(STATE & STA_SETEXT & 0xF0)setExt++;
 			break;
 		case BTN_DOWN_PRESSED:
-			if(STATE==STA_NORMAL)return;
-			if(STATE==STA_SETBED)setBed--;
-			if(STATE==STA_SETEXT)setExt--;
+			if(STATE & STA_NORMAL & 0xF0)return;
+			else STATE |= 0x0F;
+			if(STATE & STA_SETBED & 0xF0)setBed--;
+			if(STATE & STA_SETEXT & 0xF0)setExt--;
 	}
 }
 void display(void){
 	parseButton();
-	if(STATE & STA_NORMAL){
+	if(STATE & STA_NORMAL & 0xF0){
 		// 默认状态始终允许显示
-		if(STATE == STA_NORMAL+2){	// 到达两秒钟
+		if((STATE & 0x0F) == 0){	// 到达两秒钟
 			STATE = STA_NORMAL;
 			if(strptr == str_e){
 				strptr = str_b;
@@ -250,17 +271,17 @@ void display(void){
 		// 700ms 300ms
 		return;
 	}
-	if(STATE == STA_SETBED){
+	if(STATE & STA_SETBED & 0xF0){
 		strptr = str_b;
 		trans(setBed);
 	}
-	if(STATE == STA_SETEXT){
+	if(STATE & STA_SETEXT & 0xF0){
 		strptr = str_e;
 		trans(setExt);
 	}
 #ifdef DEBUG
-	strptr[0] = 1;
-	trans(debug);
+	strptr[0] = debug_head;
+	trans(debug_buffer[debug_head]);
 #endif
 	LED_COM_A = 0;
 	displayPort(0);
