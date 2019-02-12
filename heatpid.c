@@ -364,7 +364,7 @@ void main(void){
 			if(pidBed.pwm >= i){
 				PWM_BED = 0;
 			}else{
-				PWM_EXT = 1;
+				PWM_BED= 1;
 			}
 		}
 
