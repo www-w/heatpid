@@ -12,7 +12,7 @@
 #define LED_COM_B P1_1				//	bb  cc
 #define LED_COM_C P1_5				//	dddddd
 #define LED_COM_D P1_4				//	ee  ff
-#define LED_A P3_1					//	gggggg
+#define LED_A P3_1				//	gggggg
 #define LED_B P3_0
 #define LED_C P3_2
 #define LED_D P3_7
