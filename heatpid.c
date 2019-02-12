@@ -52,10 +52,82 @@ char str_b[] = {
 };
 char* strptr=str_e;	// 指向当前显示的字符串
 
+// 增量式PID 部分 
+struct PID{
+	// PID主要数据结构体
+	int16_t Sv;	// 用户设定值 用户设定摄氏度，转储为对应adc值保存于此
+	int16_t Ek;	// 本次偏差值 偏差值均基于ADC返回值计算
+	int16_t Ek1;	// 前次偏差值
+	int16_t Ek2;	// 前前次偏差值
+
+	//uint8_t pwm;	// 当前输出pwm值 [0,255]
+	int16_t pwm;	// 当前输出pwm值 [0,1000]//[0,65535]
+};
+struct PID pidExt = {200,0,0,0,0};
+struct PID pidBed = {100,0,0,0,0};
+void pidCompute(struct PID* pid){
+	int16_t t;
+	pid->Ek2 = pid->Ek1;
+	pid->Ek1 = pid->Ek;
+	t = ADC_RES;
+	pid->Ek = t - pid->Sv;
+	t = pid->Ek - pid->Ek1 + pid->Ek + pid->Ek - pid->Ek1 - pid->Ek1 + pid->Ek2;
+	/*
+	t = pid->Ek - pid->Ek1;
+	t *= 3;
+	t += pid->Ek2;
+	t += pid->pwm;
+	debug_buffer[0] = pidExt.Sv>>8;
+	debug_buffer[1] = pidExt.Sv;
+	debug_buffer[2] = pidExt.Ek>>8;
+	debug_buffer[3] = pidExt.Ek;
+	debug_buffer[4] = pidExt.Ek1>>8; 
+	debug_buffer[5] = pidExt.Ek1;
+	debug_buffer[6] = pidExt.Ek2>>8;
+	debug_buffer[7] = pidExt.Ek2;
+	debug_buffer[8] = pidExt.pwm;
+	debug_buffer[0] = pidExt.pwm;
+	debug_buffer[1] = pidBed.pwm;
+	*/
+	//if(t > 255) t = 255;
+	//if(t < 0) t = 0;
+/*	
+	if(t > 0){
+		if(pid->pwm > (pid->pwm + t)) pid->pwm = 65535;
+		else pid->pwm += t;
+	}
+	else{
+		// t <= 0
+		t = -t;
+		if(t > pid->pwm) pid->pwm = 0;
+		else pid->pwm -= t;
+	}
+*/	
+	pid->pwm += t;
+	if(pid->pwm > 1000){
+		pid->pwm = 1000;
+	}
+	if(pid->pwm < 0){
+		pid->pwm = 0;
+	}
+}
+uint16_t ms1000 = 0;	// [1,1000]
 void timer0(void) __interrupt 1    //000BH
 {
 	ms4++;
 	if(ms4==4){
+		ms1000++;
+		if(pidExt.pwm >= ms1000){
+			PWM_EXT = 0;
+		}else{
+			PWM_EXT = 1;
+		}
+		if(pidBed.pwm >= ms1000 && ms1000 < 100){
+			PWM_BED = 0;
+		}else{
+			PWM_BED = 1;
+		}
+		if(ms1000 == 1000)ms1000 = 0;
 		ms++;
 		ms4=0;
 		if(btnDown>0 && btnDown<250)btnDown++;
@@ -80,47 +152,6 @@ void timer0(void) __interrupt 1    //000BH
 			}
 		}
 	}
-}
-
-// 增量式PID 部分 
-struct PID{
-	// PID主要数据结构体
-	int16_t Sv;	// 用户设定值 用户设定摄氏度，转储为对应adc值保存于此
-	int16_t Ek;	// 本次偏差值 偏差值均基于ADC返回值计算
-	int16_t Ek1;	// 前次偏差值
-	int16_t Ek2;	// 前前次偏差值
-
-	uint8_t pwm;	// 当前输出pwm值 [0,255]
-};
-struct PID pidExt = {200,0,0,0,0};
-struct PID pidBed = {100,0,0,0,0};
-void pidCompute(struct PID* pid){
-	int16_t t;
-	pid->Ek2 = pid->Ek1;
-	pid->Ek1 = pid->Ek;
-	t = ADC_RES;
-	pid->Ek = t - pid->Sv;
-	t = pid->Ek - pid->Ek1 + pid->Ek + pid->Ek - pid->Ek1 - pid->Ek1 + pid->Ek2 + pid->pwm;
-	/*
-	t = pid->Ek - pid->Ek1;
-	t *= 3;
-	t += pid->Ek2;
-	t += pid->pwm;
-	debug_buffer[0] = pidExt.Sv>>8;
-	debug_buffer[1] = pidExt.Sv;
-	debug_buffer[2] = pidExt.Ek>>8;
-	debug_buffer[3] = pidExt.Ek;
-	debug_buffer[4] = pidExt.Ek1>>8; 
-	debug_buffer[5] = pidExt.Ek1;
-	debug_buffer[6] = pidExt.Ek2>>8;
-	debug_buffer[7] = pidExt.Ek2;
-	debug_buffer[8] = pidExt.pwm;
-	debug_buffer[0] = pidExt.pwm;
-	debug_buffer[1] = pidBed.pwm;
-	*/
-	if(t > 255) t = 255;
-	if(t < 0) t = 0;
-	pid->pwm = t;
 }
 
 void EEPROM_read(uint8_t addrh, uint8_t addrl){
@@ -353,20 +384,21 @@ void main(void){
 			adc_state = 1;	// B ok next A
 		}
 
+		/*
 		// Soft PWM OUTPUT
 		uint8_t i;
 		for(i = 1; i != 0; i++){	// i = [1, 255]
-			if(pidExt.pwm >= i){
+			if(pidExt.pwm >= i && i < 200){
 				PWM_EXT = 0;	// Power On
 			}else{
 				PWM_EXT = 1;
 			}
-			if(pidBed.pwm >= i){
+			if(pidBed.pwm >= i && i < 128){
 				PWM_BED = 0;
 			}else{
 				PWM_BED= 1;
 			}
-		}
+		}*/
 
 	}
 }
