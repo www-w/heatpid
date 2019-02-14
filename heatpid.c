@@ -103,6 +103,8 @@ void pidCompute(struct PID* pid){
 		else pid->pwm -= t;
 	}
 */	
+	//if(t>0)t = 1;
+	//if(t<0)t = -1;
 	pid->pwm += t;
 	if(pid->pwm > 1000){
 		pid->pwm = 1000;
@@ -116,30 +118,19 @@ void timer0(void) __interrupt 1    //000BH
 {
 	ms4++;
 	if(ms4==4){
-		ms1000++;
-		if(pidExt.pwm >= ms1000){
-			PWM_EXT = 0;
-		}else{
-			PWM_EXT = 1;
-		}
-		if(pidBed.pwm >= ms1000 && ms1000 < 100){
-			PWM_BED = 0;
-		}else{
-			PWM_BED = 1;
-		}
-		if(ms1000 == 1000)ms1000 = 0;
 		ms++;
 		ms4=0;
 		if(btnDown>0 && btnDown<250)btnDown++;
 		if(ms==250){
 			sec4++;
 			ms=0;
-			if(sec4 == 4) {
-				// every second
-				sec4 = 0;
-
+			if((sec4 & 7) == 7){
+				// every 2 seconds
 				if((STATE & 0x0F) > 0) STATE --;
 				else STATE = STA_NORMAL;
+			//}
+			//if(sec4 == 40) {// every 10 seconds
+				sec4 = 0;
 
 				// ADC Timer
 				if(adc_state < 0xF0){
@@ -195,14 +186,34 @@ void EEPROM_restore(void) {	// Restore parameter from EEPROM
 
 void displayDelay(){
 	// 增加延时可以减小显示频率增加显示亮度
-	uint8_t i;
-	i=0xFF;
-	while(i--);
+	uint8_t i,j;
+	uint16_t t = ms1000;
+	j=3;	// 增大脉宽，减小频率
+	while(j--){
+		ms1000 = t;
+		i=0xFA;
+		while(i--){
+			ms1000++;
+			if(pidExt.pwm >= ms1000){
+				PWM_EXT = 0;
+			}else{
+				PWM_EXT = 1;
+			}
+			if(pidBed.pwm >= ms1000) { // && ms1000 < 100)
+				PWM_BED = 0;
+			}else{
+				PWM_BED = 1;
+			}
+			if(ms1000 == 1000)ms1000 = 0;
+		}
+	}
 }
 // 传入strptr四个元素中的一个元素索引，译码并显示
 void displayPort(char LR){
 	uint8_t data = TRANSLATION[strptr[LR]];	// 有效数据，低七位
-	if(data&0x40){ LED_A = 0; }
+#ifndef DEBUG_UART
+	if(data&0x40){ LED_A = 0; }	// 调试模式不操作Tx
+#endif
 	if(data&0x20){ LED_B = 0; }
 	if(data&0x10){ LED_C = 0; }
 	if(data&0x08){ LED_D = 0; }
@@ -210,7 +221,10 @@ void displayPort(char LR){
 	if(data&0x02){ LED_F = 0; }
 	if(data&0x01){ LED_G = 0; }
 	displayDelay();
-	LED_A = LED_B = LED_C = LED_D = LED_E = LED_F = LED_G = 1;
+#ifndef DEBUG_UART
+	LED_A = 1;	// 调试模式不操作Tx
+#endif
+	LED_B = LED_C = LED_D = LED_E = LED_F = LED_G = 1;
 }
 /** 传入值，按百位十位个位写入strptr指定位置，以待转码显示 **/
 void trans(uint8_t a){
@@ -296,7 +310,7 @@ void display(void){
 			}
 		}
 
-	} else if(sec4 < 1){
+	} else if((sec4 & 3) < 1){	// 00 01 10 11 == 1s
 		// 其它模式都需要闪烁显示
 		// 500ms 显示 500ms 不显示
 		// 700ms 300ms
@@ -328,7 +342,13 @@ void display(void){
 	LED_COM_D = 1;
 }
 
-
+#ifdef DEBUG_UART
+void uart_tx(uint8_t data){
+	SBUF = data;
+	while(!TI);
+	TI = 0;
+}
+#endif
 
 void main(void){
 	//Init Timer0
@@ -346,6 +366,17 @@ void main(void){
 	P1M1 = 0xC0;	// P1.7 & P1.6 ADC input
 	// A Channel P1.7
 	// B Channel P1.6
+#ifdef DEBUG_UART
+	// Init Uart
+	SCON = 0x40;	// tx only
+	TMOD |= 0x20;	// 8bit auto reload timer1
+	TH1 = 243;	// 2400 bps
+	TL0 = 243;
+	TR1 = 1;
+	uart_tx(0x90);
+#endif
+
+	uint8_t pidTimer = 0;
 
 	while(1){
 		display();
@@ -365,8 +396,16 @@ void main(void){
 			extTmp = IAP_DATA;
 			// PID start works
 			// pv = ADC_RES 当前值
-			pidCompute(&pidExt);
-
+			pidTimer++;
+			if(pidTimer == 5){
+				pidCompute(&pidExt);
+				pidTimer = 0;
+			}
+#ifdef DEBUG_UART
+			uart_tx(0xEE);
+			uart_tx(pidExt.pwm >> 8);
+			uart_tx(pidExt.pwm);
+#endif
 			adc_state = 0;	// A ok next B
 		}else if(adc_state == 0xF0){
 			// compute B
@@ -379,8 +418,16 @@ void main(void){
 			ADC2TMP(ADC_RES);
 			bedTmp = IAP_DATA;
 			// PID
-			pidCompute(&pidBed);
-
+			pidTimer ++;
+			if(pidTimer == 5){
+				pidCompute(&pidBed);
+				pidTimer = 0;
+			}
+#ifdef DEBUG_UART
+			uart_tx(0xBE);
+			uart_tx(pidBed.pwm >> 8);
+			uart_tx(pidBed.pwm);
+#endif
 			adc_state = 1;	// B ok next A
 		}
 

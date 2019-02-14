@@ -7,6 +7,11 @@
 #define DEBUG_SIZE 9
 #endif
 
+//#define DEBUG_UART	// Debug on UART
+#ifdef DEBUG_UART
+void uart_tx(uint8_t data);
+#endif
+
 // 定义笔段LED IO口
 #define LED_COM_A P1_3				//	aaaaaa
 #define LED_COM_B P1_1				//	bb  cc
