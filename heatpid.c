@@ -56,12 +56,15 @@ char* strptr=str_e;	// 指向当前显示的字符串
 struct PID{
 	// PID主要数据结构体
 	int16_t Sv;	// 用户设定值 用户设定摄氏度，转储为对应adc值保存于此
+	//int16_t accSv;	// 设定值缓冲处理,防过过冲
 	int16_t Ek;	// 本次偏差值 偏差值均基于ADC返回值计算
 	int16_t Ek1;	// 前次偏差值
 	int16_t Ek2;	// 前前次偏差值
 
 	//uint8_t pwm;	// 当前输出pwm值 [0,255]
 	int16_t pwm;	// 当前输出pwm值 [0,1000]//[0,65535]
+
+
 };
 struct PID pidExt = {200,0,0,0,0};
 struct PID pidBed = {100,0,0,0,0};
@@ -72,6 +75,14 @@ void pidCompute(struct PID* pid){
 	t = ADC_RES;
 	pid->Ek = t - pid->Sv;
 	t = pid->Ek - pid->Ek1 + pid->Ek + pid->Ek - pid->Ek1 - pid->Ek1 + pid->Ek2;
+	/*
+	if(t > 0){
+		// 稳态，下降区间，调高目标值
+		pid->accSv -= 10;
+		if(pid->accSv < pid->Sv){
+			pid->accSv = pid->Sv;
+		}
+	}*/
 	/*
 	t = pid->Ek - pid->Ek1;
 	t *= 3;
@@ -377,6 +388,7 @@ void main(void){
 #endif
 
 	uint8_t pidTimer = 0;
+	uint8_t extOver = 1;
 
 	while(1){
 		display();
@@ -396,8 +408,12 @@ void main(void){
 			extTmp = IAP_DATA;
 			// PID start works
 			// pv = ADC_RES 当前值
+			if(extTmp > (setExt - 10) && extOver){
+				pidExt.pwm = 0;
+				extOver = 0;
+			}
 			pidTimer++;
-			if(pidTimer == 5){
+			if(pidTimer == 5){// || pidExt.accSv != pidExt.Sv){
 				pidCompute(&pidExt);
 				pidTimer = 0;
 			}
@@ -419,7 +435,7 @@ void main(void){
 			bedTmp = IAP_DATA;
 			// PID
 			pidTimer ++;
-			if(pidTimer == 5){
+			if(pidTimer == 5){// || pidBed.accSv != pidBed.Sv){
 				pidCompute(&pidBed);
 				pidTimer = 0;
 			}
